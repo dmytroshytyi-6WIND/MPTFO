@@ -1,0 +1,126 @@
+From ae970f6a1e43587a428dc0d5bcb5f5222ccdac97 Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Wed, 14 Sep 2022 04:24:45 +0200
+Subject: [RFC PATCH mptcp-next v8 3/9] Initiator: MSG_FASTOPEN sendto().
+ request cookie
+
+---
+ net/mptcp/fastopen.c | 50 ++++++++++++++++++++++++++++++++++++++++++++
+ net/mptcp/protocol.c |  8 +++----
+ net/mptcp/protocol.h |  8 +++++++
+ 3 files changed, 62 insertions(+), 4 deletions(-)
+
+diff --git a/net/mptcp/fastopen.c b/net/mptcp/fastopen.c
+index 0c9ef6f5d528..9974508e0f4c 100644
+--- a/net/mptcp/fastopen.c
++++ b/net/mptcp/fastopen.c
+@@ -3,3 +3,53 @@
+  */
+ 
+ #include "protocol.h"
++
++int mptcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
++			   size_t len, struct mptcp_sock *msk,
++			   size_t *copied)
++{
++	const struct iphdr *iph;
++	struct ubuf_info *uarg;
++	struct sockaddr *uaddr;
++	struct sk_buff *skb;
++	struct tcp_sock *tp;
++	struct socket *ssk;
++	int ret;
++
++	ssk = __mptcp_nmpc_socket(msk);
++	if (unlikely(!ssk))
++		goto out_EFAULT;
++	skb = tcp_stream_alloc_skb(ssk->sk, 0, ssk->sk->sk_allocation, true);
++	if (unlikely(!skb))
++		goto out_EFAULT;
++	iph = ip_hdr(skb);
++	if (unlikely(!iph))
++		goto out_EFAULT;
++	uarg = msg_zerocopy_realloc(sk, len, skb_zcopy(skb));
++	if (unlikely(!uarg))
++		goto out_EFAULT;
++	uaddr = msg->msg_name;
++
++	tp = tcp_sk(ssk->sk);
++	if (unlikely(!tp))
++		goto out_EFAULT;
++	if (!tp->fastopen_req)
++		tp->fastopen_req = kzalloc(sizeof(*tp->fastopen_req),
++					   ssk->sk->sk_allocation);
++
++	if (unlikely(!tp->fastopen_req))
++		goto out_EFAULT;
++	tp->fastopen_req->data = msg;
++	tp->fastopen_req->size = len;
++	tp->fastopen_req->uarg = uarg;
++
++	/* requests a cookie */
++	ret = mptcp_stream_connect(sk->sk_socket, uaddr,
++				   msg->msg_namelen, msg->msg_flags);
++	if (!ret)
++		*copied = len;
++	return ret;
++out_EFAULT:
++	ret = -EFAULT;
++	return ret;
++}
+diff --git a/net/mptcp/protocol.c b/net/mptcp/protocol.c
+index 0e5db0a634d3..357767a84c57 100644
+--- a/net/mptcp/protocol.c
++++ b/net/mptcp/protocol.c
+@@ -178,7 +178,7 @@ static void __mptcp_rmem_reclaim(struct sock *sk, int amount)
+ 	__sk_mem_reduce_allocated(sk, amount);
+ }
+ 
+-static void mptcp_rmem_uncharge(struct sock *sk, int size)
++void mptcp_rmem_uncharge(struct sock *sk, int size)
+ {
+ 	struct mptcp_sock *msk = mptcp_sk(sk);
+ 	int reclaimable;
+@@ -191,7 +191,7 @@ static void mptcp_rmem_uncharge(struct sock *sk, int size)
+ 		__mptcp_rmem_reclaim(sk, reclaimable);
+ }
+ 
+-static void mptcp_rfree(struct sk_buff *skb)
++void mptcp_rfree(struct sk_buff *skb)
+ {
+ 	unsigned int len = skb->truesize;
+ 	struct sock *sk = skb->sk;
+@@ -1672,9 +1672,9 @@ static int mptcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
+ 	int ret = 0;
+ 	long timeo;
+ 
+-	/* we don't support FASTOPEN yet */
++	/* we don't fully support FASTOPEN yet */
+ 	if (msg->msg_flags & MSG_FASTOPEN)
+-		return -EOPNOTSUPP;
++		ret = mptcp_sendmsg_fastopen(sk, msg, len, msk, &copied);
+ 
+ 	/* silently ignore everything else */
+ 	msg->msg_flags &= MSG_MORE | MSG_DONTWAIT | MSG_NOSIGNAL;
+diff --git a/net/mptcp/protocol.h b/net/mptcp/protocol.h
+index 1e21293bceaa..5cd14eacd1d6 100644
+--- a/net/mptcp/protocol.h
++++ b/net/mptcp/protocol.h
+@@ -836,6 +836,14 @@ void mptcp_event_addr_announced(const struct sock *ssk, const struct mptcp_addr_
+ void mptcp_event_addr_removed(const struct mptcp_sock *msk, u8 id);
+ bool mptcp_userspace_pm_active(const struct mptcp_sock *msk);
+ int mptcp_stream_connect(struct socket *sock, struct sockaddr *uaddr, int addr_len, int flags);
++void mptcp_rmem_uncharge(struct sock *sk, int size);
++void mptcp_rfree(struct sk_buff *skb);
++
++// Fast Open Mechanism functions begin
++int mptcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
++			   size_t len, struct mptcp_sock *msk,
++			   size_t *copied);
++// Fast Open Mechanism functions end
+ 
+ static inline bool mptcp_pm_should_add_signal(struct mptcp_sock *msk)
+ {
+-- 
+2.25.1
+

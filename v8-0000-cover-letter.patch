@@ -1,0 +1,52 @@
+From ccea8f8ca5d9ab73b62c6347ebfb990ed399087a Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Mon, 19 Sep 2022 04:05:50 +0200
+Subject: [RFC PATCH mptcp-next v8 0/9] mptcp: Fast Open Mechanism
+
+[PATCH v8] includes "client-server" partial support for:
+1. MPTCP cookie request from client (seems OK).
+2. MPTCP cookie offering from server (seems OK).
+3. MPTCP SYN+DATA+COOKIE from client (seems OK).
+4. subsequent write + read on the opened socket (seems OK).
+===Changes between v7 and v8
+- Code is refactored (only reuse existing functions)
+===Pros/Cons of v7:
+- increased modifications of existing TCP code in linux kernel.
+- decreased size of the patch (in comparison with v7)
+    due to reuse of all functions in tcp_fastopen.c.
+===Future work:
+-Adress the appearance of "MPTCP FIN" as duplicated acks.
+
+Dmytro Shytyi (9):
+  Add separate fastopen.c file.
+  add mptcp_stream_connect to protocol.h
+  Initiator: MSG_FASTOPEN sendto(). request cookie
+  Initiator: add locks() to mptcp_sendmsg_fastopen.
+  add mptcp_setsockopt_fastopen
+  mptfo variables for msk, options. Fix loop retrans
+  Fix unxpctd val of subflow->map_seq(dscrd packet)
+  add skb to mskq in tcp_fastopen_add_skb()
+  selftests: mptfo initiator/listener
+
+ include/net/tcp.h                             |   2 +-
+ net/ipv4/tcp_fastopen.c                       |  64 ++++++++--
+ net/ipv4/tcp_input.c                          |  11 +-
+ net/mptcp/Makefile                            |   2 +-
+ net/mptcp/fastopen.c                          | 109 ++++++++++++++++++
+ net/mptcp/options.c                           |   3 +
+ net/mptcp/protocol.c                          |  12 +-
+ net/mptcp/protocol.h                          |  17 ++-
+ net/mptcp/sockopt.c                           |   3 +
+ net/mptcp/subflow.c                           |   6 +-
+ tools/testing/selftests/net/mptcp/mptfo.sh    |  13 +++
+ .../selftests/net/mptcp/mptfo_initiator.c     |  41 +++++++
+ .../selftests/net/mptcp/mptfo_listener.c      |  98 ++++++++++++++++
+ 13 files changed, 358 insertions(+), 23 deletions(-)
+ create mode 100644 net/mptcp/fastopen.c
+ create mode 100644 tools/testing/selftests/net/mptcp/mptfo.sh
+ create mode 100644 tools/testing/selftests/net/mptcp/mptfo_initiator.c
+ create mode 100644 tools/testing/selftests/net/mptcp/mptfo_listener.c
+
+-- 
+2.25.1
+

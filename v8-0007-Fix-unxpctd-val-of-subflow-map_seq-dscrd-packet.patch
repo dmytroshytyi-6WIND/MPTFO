@@ -1,0 +1,30 @@
+From bf16f296a9c4c6aac7f5bb45e75f1ebae45c5503 Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Wed, 14 Sep 2022 05:02:38 +0200
+Subject: [RFC PATCH mptcp-next v8 7/9] Fix unxpctd val of
+ subflow->map_seq(dscrd packet)
+
+---
+ net/mptcp/subflow.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/net/mptcp/subflow.c b/net/mptcp/subflow.c
+index c7d49fb6e7bd..075c61d1d37f 100644
+--- a/net/mptcp/subflow.c
++++ b/net/mptcp/subflow.c
+@@ -1077,8 +1077,10 @@ static enum mapping_status get_mapping_status(struct sock *ssk,
+ 		/* will validate the next map after consuming the current one */
+ 		goto validate_csum;
+ 	}
+-
+-	subflow->map_seq = map_seq;
++	if (msk->is_mptfo)
++		subflow->map_seq = READ_ONCE(msk->ack_seq);
++	else
++		subflow->map_seq = map_seq;
+ 	subflow->map_subflow_seq = mpext->subflow_seq;
+ 	subflow->map_data_len = data_len;
+ 	subflow->map_valid = 1;
+-- 
+2.25.1
+

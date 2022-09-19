@@ -1,0 +1,38 @@
+From d7bb5cef4af187305071d001bae86fa559f8ae65 Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Wed, 14 Sep 2022 04:11:21 +0200
+Subject: [RFC PATCH mptcp-next v8 1/9] Add separate fastopen.c file.
+
+---
+ net/mptcp/Makefile   | 2 +-
+ net/mptcp/fastopen.c | 5 +++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+ create mode 100644 net/mptcp/fastopen.c
+
+diff --git a/net/mptcp/Makefile b/net/mptcp/Makefile
+index 8a7f68efa35f..c42ad8609876 100644
+--- a/net/mptcp/Makefile
++++ b/net/mptcp/Makefile
+@@ -2,7 +2,7 @@
+ obj-$(CONFIG_MPTCP) += mptcp.o
+ 
+ mptcp-y := protocol.o subflow.o options.o token.o crypto.o ctrl.o pm.o diag.o \
+-	   mib.o pm_netlink.o sockopt.o pm_userspace.o sched.o
++	   mib.o pm_netlink.o sockopt.o pm_userspace.o sched.o fastopen.o
+ 
+ obj-$(CONFIG_SYN_COOKIES) += syncookies.o
+ obj-$(CONFIG_INET_MPTCP_DIAG) += mptcp_diag.o
+diff --git a/net/mptcp/fastopen.c b/net/mptcp/fastopen.c
+new file mode 100644
+index 000000000000..0c9ef6f5d528
+--- /dev/null
++++ b/net/mptcp/fastopen.c
+@@ -0,0 +1,5 @@
++/* SPDX-License-Identifier: GPL-2.0
++ * MPTCP Fast Open Mechanism. Copyright (c) 2021-2022, Dmytro SHYTYI
++ */
++
++#include "protocol.h"
+-- 
+2.25.1
+
