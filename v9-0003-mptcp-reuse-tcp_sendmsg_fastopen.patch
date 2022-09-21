@@ -1,0 +1,127 @@
+From faaf054be12d642abafad66a46f2f22794479cba Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Mon, 19 Sep 2022 18:41:11 +0200
+Subject: [RFC PATCH mptcp-next v9 3/6] mptcp: reuse tcp_sendmsg_fastopen()
+
+In the following patches we will reuse modified tcp_sendmsg_fastopen().
+We call it from mptcp_sendmsg().
+
+Signed-off-by: Dmytro Shytyi <dmytro@shytyi.net>
+---
+ include/net/tcp.h    |  3 +++
+ net/ipv4/tcp.c       | 24 +++++++++++++++++++-----
+ net/mptcp/protocol.c | 29 +++++++++++++++++++++++++++--
+ 3 files changed, 49 insertions(+), 7 deletions(-)
+
+diff --git a/include/net/tcp.h b/include/net/tcp.h
+index 735e957f7f4b..a7d49e42470a 100644
+--- a/include/net/tcp.h
++++ b/include/net/tcp.h
+@@ -1754,6 +1754,9 @@ struct sock *tcp_try_fastopen(struct sock *sk, struct sk_buff *skb,
+ 			      struct request_sock *req,
+ 			      struct tcp_fastopen_cookie *foc,
+ 			      const struct dst_entry *dst);
++int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
++			 int *copied, size_t size,
++			 struct ubuf_info *uarg);
+ void tcp_fastopen_init_key_once(struct net *net);
+ bool tcp_fastopen_cookie_check(struct sock *sk, u16 *mss,
+ 			     struct tcp_fastopen_cookie *cookie);
+diff --git a/net/ipv4/tcp.c b/net/ipv4/tcp.c
+index 9251c99d3cfd..41fa9e840e0e 100644
+--- a/net/ipv4/tcp.c
++++ b/net/ipv4/tcp.c
+@@ -280,6 +280,9 @@
+ #include <asm/ioctls.h>
+ #include <net/busy_poll.h>
+ 
++#include <net/mptcp.h>
++#include "../mptcp/protocol.h"
++
+ /* Track pending CMSGs. */
+ enum {
+ 	TCP_CMSG_INQ = 1,
+@@ -1162,9 +1165,9 @@ void tcp_free_fastopen_req(struct tcp_sock *tp)
+ 	}
+ }
+ 
+-static int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
+-				int *copied, size_t size,
+-				struct ubuf_info *uarg)
++int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
++			 int *copied, size_t size,
++			 struct ubuf_info *uarg)
+ {
+ 	struct tcp_sock *tp = tcp_sk(sk);
+ 	struct inet_sock *inet = inet_sk(sk);
+@@ -1197,8 +1200,19 @@ static int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
+ 		}
+ 	}
+ 	flags = (msg->msg_flags & MSG_DONTWAIT) ? O_NONBLOCK : 0;
+-	err = __inet_stream_connect(sk->sk_socket, uaddr,
+-				    msg->msg_namelen, flags, 1);
++	if (!sk_is_mptcp(sk)) {
++		err = __inet_stream_connect(sk->sk_socket, uaddr,
++					    msg->msg_namelen, flags, 1);
++	} else {
++		struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(sk);
++
++		release_sock(sk);
++		release_sock(subflow->conn);
++		err = mptcp_stream_connect(sk->sk_socket, uaddr,
++					   msg->msg_namelen, msg->msg_flags);
++		lock_sock(subflow->conn);
++		lock_sock(sk);
++	}
+ 	/* fastopen_req could already be freed in __inet_stream_connect
+ 	 * if the connection times out or gets rst
+ 	 */
+diff --git a/net/mptcp/protocol.c b/net/mptcp/protocol.c
+index 470045793181..d5c502d141b4 100644
+--- a/net/mptcp/protocol.c
++++ b/net/mptcp/protocol.c
+@@ -1668,14 +1668,39 @@ static int mptcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
+ {
+ 	struct mptcp_sock *msk = mptcp_sk(sk);
+ 	struct page_frag *pfrag;
++	struct socket *ssock;
+ 	size_t copied = 0;
+ 	int ret = 0;
+ 	long timeo;
+ 
++	lock_sock(sk);
++
++	ssock = __mptcp_nmpc_socket(msk);
++
++	if (ssock && inet_sk(ssock->sk)->defer_connect) {
++		release_sock(sk);
++		goto fastopen;
++	} else {
++		release_sock(sk);
++	}
+ 	/* we don't support FASTOPEN yet */
+-	if (msg->msg_flags & MSG_FASTOPEN)
+-		return -EOPNOTSUPP;
++	if (msg->msg_flags & MSG_FASTOPEN) {
++fastopen:
++		lock_sock(sk);
++
++		ssock = __mptcp_nmpc_socket(msk);
++
++		lock_sock(ssock->sk);
+ 
++		if (ssock) {
++			int copied_syn_fastopen = 0;
++
++			ret = tcp_sendmsg_fastopen(ssock->sk, msg, &copied_syn_fastopen, len, NULL);
++			copied += copied_syn_fastopen;
++		}
++		release_sock(ssock->sk);
++		release_sock(sk);
++	}
+ 	/* silently ignore everything else */
+ 	msg->msg_flags &= MSG_MORE | MSG_DONTWAIT | MSG_NOSIGNAL;
+ 
+-- 
+2.25.1
+

@@ -1,18 +1,24 @@
-From 5aa2997b66499029576715ffdc33c3d9d7243382 Mon Sep 17 00:00:00 2001
+From 329172a68630aed7fae44398b214a0543261adba Mon Sep 17 00:00:00 2001
 From: Dmytro Shytyi <dmytro@shytyi.net>
 Date: Sat, 17 Sep 2022 21:57:29 +0200
-Subject: [RFC PATCH mptcp-next v8 2/9] add mptcp_stream_connect to protocol.h
+Subject: [RFC PATCH mptcp-next v9 1/6] mptcp: add mptcp_stream_connect to
+ protocol.h
 
+In the following patches we will call mptcp_stream_connect() from
+function tcp_sendmsg_fastopen() in file "net/ipv4/tcp.c", thus make
+such symbol visible.
+
+Signed-off-by: Dmytro Shytyi <dmytro@shytyi.net>
 ---
  net/mptcp/protocol.c | 4 ++--
  net/mptcp/protocol.h | 1 +
  2 files changed, 3 insertions(+), 2 deletions(-)
 
 diff --git a/net/mptcp/protocol.c b/net/mptcp/protocol.c
-index 55442df8fb97..0e5db0a634d3 100644
+index c0bf48e3149b..470045793181 100644
 --- a/net/mptcp/protocol.c
 +++ b/net/mptcp/protocol.c
-@@ -3474,8 +3474,8 @@ static void mptcp_subflow_early_fallback(struct mptcp_sock *msk,
+@@ -3484,8 +3484,8 @@ static void mptcp_subflow_early_fallback(struct mptcp_sock *msk,
  	__mptcp_do_fallback(msk);
  }
  
@@ -24,10 +30,10 @@ index 55442df8fb97..0e5db0a634d3 100644
  	struct mptcp_sock *msk = mptcp_sk(sock->sk);
  	struct mptcp_subflow_context *subflow;
 diff --git a/net/mptcp/protocol.h b/net/mptcp/protocol.h
-index 1bc9f6e77ddd..1e21293bceaa 100644
+index 93c535440a5c..632161b13950 100644
 --- a/net/mptcp/protocol.h
 +++ b/net/mptcp/protocol.h
-@@ -835,6 +835,7 @@ void mptcp_event(enum mptcp_event_type type, const struct mptcp_sock *msk,
+@@ -837,6 +837,7 @@ void mptcp_event(enum mptcp_event_type type, const struct mptcp_sock *msk,
  void mptcp_event_addr_announced(const struct sock *ssk, const struct mptcp_addr_info *info);
  void mptcp_event_addr_removed(const struct mptcp_sock *msk, u8 id);
  bool mptcp_userspace_pm_active(const struct mptcp_sock *msk);

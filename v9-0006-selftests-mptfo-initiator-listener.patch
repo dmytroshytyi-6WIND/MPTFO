@@ -1,13 +1,17 @@
-From ccea8f8ca5d9ab73b62c6347ebfb990ed399087a Mon Sep 17 00:00:00 2001
+From d972985f25404354715d2806b99adeb48bcfc9cd Mon Sep 17 00:00:00 2001
 From: Dmytro Shytyi <dmytro@shytyi.net>
 Date: Thu, 15 Sep 2022 19:40:47 +0200
-Subject: [RFC PATCH mptcp-next v8 9/9] selftests: mptfo initiator/listener
+Subject: [RFC PATCH mptcp-next v9 6/6] selftests: mptfo initiator/listener
 
+MPTFO tests: these are examples of initiator (sendto) and listener,
+probably are going to be integrated to the mptcp_connect.* selftests
+
+Signed-off-by: Dmytro Shytyi <dmytro@shytyi.net>
 ---
- tools/testing/selftests/net/mptcp/mptfo.sh    | 13 +++
- .../selftests/net/mptcp/mptfo_initiator.c     | 41 ++++++++
- .../selftests/net/mptcp/mptfo_listener.c      | 98 +++++++++++++++++++
- 3 files changed, 152 insertions(+)
+ tools/testing/selftests/net/mptcp/mptfo.sh    |  13 +++
+ .../selftests/net/mptcp/mptfo_initiator.c     |  43 ++++++++
+ .../selftests/net/mptcp/mptfo_listener.c      | 100 ++++++++++++++++++
+ 3 files changed, 156 insertions(+)
  create mode 100644 tools/testing/selftests/net/mptcp/mptfo.sh
  create mode 100644 tools/testing/selftests/net/mptcp/mptfo_initiator.c
  create mode 100644 tools/testing/selftests/net/mptcp/mptfo_listener.c
@@ -33,10 +37,12 @@ index 000000000000..9ed0cb281094
 +sudo ip netns exec client bash -c "echo 1 > /proc/sys/net/ipv4/tcp_fastopen"
 diff --git a/tools/testing/selftests/net/mptcp/mptfo_initiator.c b/tools/testing/selftests/net/mptcp/mptfo_initiator.c
 new file mode 100644
-index 000000000000..e23b88693fb0
+index 000000000000..05e6a3d62bb8
 --- /dev/null
 +++ b/tools/testing/selftests/net/mptcp/mptfo_initiator.c
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,43 @@
++// SPDX-License-Identifier: GPL-2.0
++
 +#include <arpa/inet.h>
 +#include <netinet/in.h>
 +#include <stdio.h>
@@ -80,10 +86,12 @@ index 000000000000..e23b88693fb0
 +}
 diff --git a/tools/testing/selftests/net/mptcp/mptfo_listener.c b/tools/testing/selftests/net/mptcp/mptfo_listener.c
 new file mode 100644
-index 000000000000..7e3de8d1d08c
+index 000000000000..6890349b14bb
 --- /dev/null
 +++ b/tools/testing/selftests/net/mptcp/mptfo_listener.c
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,100 @@
++// SPDX-License-Identifier: GPL-2.0
++
 +#include <arpa/inet.h>
 +#include <stdio.h>
 +#include <stdlib.h>

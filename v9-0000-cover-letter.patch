@@ -1,0 +1,48 @@
+From d972985f25404354715d2806b99adeb48bcfc9cd Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Wed, 21 Sep 2022 04:47:32 +0200
+Subject: [RFC PATCH mptcp-next v9 0/6] mptcp: Fast Open Mechanism
+
+[PATCH v9] includes "client-server" partial support for:
+1. MPTCP cookie request from client (seems OK).
+2. MPTCP cookie offering from server (seems OK).
+3. MPTCP SYN+DATA+COOKIE from client (seems OK).
+4. subsequent write + read on the opened socket (seems OK).
+===Changes between v8 and v9
+- Code is refactored (Max. reuse of existing linux kernel code).
+- impact on fastopen.c is reduced to minima due to added function
+subflow_v4_send_synack().
+===Future work
+-Adress the appearance of "MPTCP FIN" as duplicated acks.
+-Integrate presented in the last patch selftests. 
+
+Dmytro Shytyi (6):
+  mptcp: add mptcp_stream_connect to protocol.h
+  mptcp: add mptcp_setsockopt_fastopen
+  mptcp: reuse tcp_sendmsg_fastopen()
+  mptcp: fix retrans., add mptfo vars to msk
+  mptcp: add subflow_v(4,6)_send_synack()
+  selftests: mptfo initiator/listener
+
+ include/net/tcp.h                             |   3 +
+ net/ipv4/tcp.c                                |  24 ++++-
+ net/ipv4/tcp_fastopen.c                       |  19 ++--
+ net/mptcp/Makefile                            |   2 +-
+ net/mptcp/fastopen.c                          |  46 ++++++++
+ net/mptcp/options.c                           |   5 +
+ net/mptcp/protocol.c                          |  35 +++++-
+ net/mptcp/protocol.h                          |  10 ++
+ net/mptcp/sockopt.c                           |   3 +
+ net/mptcp/subflow.c                           |  70 ++++++++++++
+ tools/testing/selftests/net/mptcp/mptfo.sh    |  13 +++
+ .../selftests/net/mptcp/mptfo_initiator.c     |  43 ++++++++
+ .../selftests/net/mptcp/mptfo_listener.c      | 100 ++++++++++++++++++
+ 13 files changed, 356 insertions(+), 17 deletions(-)
+ create mode 100644 net/mptcp/fastopen.c
+ create mode 100644 tools/testing/selftests/net/mptcp/mptfo.sh
+ create mode 100644 tools/testing/selftests/net/mptcp/mptfo_initiator.c
+ create mode 100644 tools/testing/selftests/net/mptcp/mptfo_listener.c
+
+-- 
+2.25.1
+
