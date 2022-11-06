@@ -1,0 +1,205 @@
+From 8547d07828657d161f5d6ab76f18fb307e32c9b7 Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Fri, 30 Sep 2022 23:27:32 +0000
+Subject: [RFC PATCH mptcp-next v15 3/5] mptcp: add
+ subflow_v(4,6)_send_synack()
+
+In this patch we add skb to the msk, dequeue it from sk, remove TSs and
+do skb mapping.
+
+Signed-off-by: Dmytro Shytyi <dmytro@shytyi.net>
+---
+ net/mptcp/fastopen.c | 47 ++++++++++++++++++++++++++++++++++++++++++++
+ net/mptcp/protocol.c | 11 +----------
+ net/mptcp/protocol.h | 12 +++++++++++
+ net/mptcp/subflow.c  | 42 +++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 102 insertions(+), 10 deletions(-)
+
+diff --git a/net/mptcp/fastopen.c b/net/mptcp/fastopen.c
+index d6fb45e6be4f..2a36a83cd846 100644
+--- a/net/mptcp/fastopen.c
++++ b/net/mptcp/fastopen.c
+@@ -4,6 +4,53 @@
+ 
+ #include "protocol.h"
+ 
++void subflow_fastopen_send_synack_set_params(struct mptcp_subflow_context *subflow,
++					     struct request_sock *req)
++{
++	struct tcp_request_sock *treq = tcp_rsk(req);
++	struct sock *ssk = subflow->tcp_sock;
++	struct sock *sk = subflow->conn;
++	struct mptcp_sock *msk;
++	struct sk_buff *skb;
++	struct tcp_sock *tp;
++	u32 offset;
++
++	msk = mptcp_sk(sk);
++	tp = tcp_sk(ssk);
++
++	/* mark subflow/msk as "mptfo" */
++	msk->is_mptfo = 1;
++
++	skb = skb_peek(&ssk->sk_receive_queue);
++
++	/* dequeue the skb from sk receive queue */
++	__skb_unlink(skb, &ssk->sk_receive_queue);
++	skb_ext_reset(skb);
++	skb_orphan(skb);
++
++	/* set the skb mapping */
++	tp->copied_seq += tp->rcv_nxt - treq->rcv_isn - 1;
++	subflow->map_seq = mptcp_subflow_get_mapped_dsn(subflow);
++	subflow->ssn_offset = tp->copied_seq - 1;
++
++	/* initialize MPTCP_CB */
++	offset = tp->copied_seq - TCP_SKB_CB(skb)->seq;
++	MPTCP_SKB_CB(skb)->map_seq = mptcp_subflow_get_mapped_dsn(subflow);
++	MPTCP_SKB_CB(skb)->end_seq = MPTCP_SKB_CB(skb)->map_seq +
++				     (skb->len - offset);
++	MPTCP_SKB_CB(skb)->offset = offset;
++	MPTCP_SKB_CB(skb)->has_rxtstamp = TCP_SKB_CB(skb)->has_rxtstamp;
++
++	mptcp_data_lock(sk);
++
++	mptcp_set_owner_r(skb, sk);
++	__skb_queue_tail(&msk->receive_queue, skb);
++
++	(sk)->sk_data_ready(sk);
++
++	mptcp_data_unlock(sk);
++}
++
+ void mptcp_gen_msk_ackseq_fastopen(struct mptcp_sock *msk, struct mptcp_subflow_context *subflow,
+ 				   struct mptcp_options_received mp_opt)
+ {
+diff --git a/net/mptcp/protocol.c b/net/mptcp/protocol.c
+index f4247218fd1b..bf04f4161070 100644
+--- a/net/mptcp/protocol.c
++++ b/net/mptcp/protocol.c
+@@ -36,15 +36,6 @@ struct mptcp6_sock {
+ };
+ #endif
+ 
+-struct mptcp_skb_cb {
+-	u64 map_seq;
+-	u64 end_seq;
+-	u32 offset;
+-	u8  has_rxtstamp:1;
+-};
+-
+-#define MPTCP_SKB_CB(__skb)	((struct mptcp_skb_cb *)&((__skb)->cb[0]))
+-
+ enum {
+ 	MPTCP_CMSG_TS = BIT(0),
+ 	MPTCP_CMSG_INQ = BIT(1),
+@@ -200,7 +191,7 @@ static void mptcp_rfree(struct sk_buff *skb)
+ 	mptcp_rmem_uncharge(sk, len);
+ }
+ 
+-static void mptcp_set_owner_r(struct sk_buff *skb, struct sock *sk)
++void mptcp_set_owner_r(struct sk_buff *skb, struct sock *sk)
+ {
+ 	skb_orphan(skb);
+ 	skb->sk = sk;
+diff --git a/net/mptcp/protocol.h b/net/mptcp/protocol.h
+index f4b6f817ec46..b3dfd0dacde5 100644
+--- a/net/mptcp/protocol.h
++++ b/net/mptcp/protocol.h
+@@ -126,6 +126,15 @@
+ #define MPTCP_CONNECTED		6
+ #define MPTCP_RESET_SCHEDULER	7
+ 
++struct mptcp_skb_cb {
++	u64 map_seq;
++	u64 end_seq;
++	u32 offset;
++	u8  has_rxtstamp:1;
++};
++
++#define MPTCP_SKB_CB(__skb)	((struct mptcp_skb_cb *)&((__skb)->cb[0]))
++
+ static inline bool before64(__u64 seq1, __u64 seq2)
+ {
+ 	return (__s64)(seq1 - seq2) < 0;
+@@ -845,6 +854,9 @@ bool mptcp_userspace_pm_active(const struct mptcp_sock *msk);
+ // Fast Open Mechanism functions begin
+ void mptcp_gen_msk_ackseq_fastopen(struct mptcp_sock *msk, struct mptcp_subflow_context *subflow,
+ 				   struct mptcp_options_received mp_opt);
++void mptcp_set_owner_r(struct sk_buff *skb, struct sock *sk);
++void subflow_fastopen_send_synack_set_params(struct mptcp_subflow_context *subflow,
++					     struct request_sock *req);
+ // Fast Open Mechanism functions end
+ 
+ static inline bool mptcp_pm_should_add_signal(struct mptcp_sock *msk)
+diff --git a/net/mptcp/subflow.c b/net/mptcp/subflow.c
+index 02a54d59697b..5e28b02822e4 100644
+--- a/net/mptcp/subflow.c
++++ b/net/mptcp/subflow.c
+@@ -307,7 +307,47 @@ static struct dst_entry *subflow_v4_route_req(const struct sock *sk,
+ 	return NULL;
+ }
+ 
++static int subflow_v4_send_synack(const struct sock *sk, struct dst_entry *dst,
++				  struct flowi *fl,
++				  struct request_sock *req,
++				  struct tcp_fastopen_cookie *foc,
++				  enum tcp_synack_type synack_type,
++				  struct sk_buff *syn_skb)
++{
++	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(sk);
++	struct inet_request_sock *ireq = inet_rsk(req);
++
++	/* clear tstamp_ok, as needed depending on cookie */
++	if (foc && foc->len > -1)
++		ireq->tstamp_ok = 0;
++
++	if (synack_type == TCP_SYNACK_FASTOPEN)
++		subflow_fastopen_send_synack_set_params(subflow, req);
++
++	return tcp_request_sock_ipv4_ops.send_synack(sk, dst, fl, req, foc, synack_type, syn_skb);
++}
++
+ #if IS_ENABLED(CONFIG_MPTCP_IPV6)
++static int subflow_v6_send_synack(const struct sock *sk, struct dst_entry *dst,
++				  struct flowi *fl,
++				  struct request_sock *req,
++				  struct tcp_fastopen_cookie *foc,
++				  enum tcp_synack_type synack_type,
++				  struct sk_buff *syn_skb)
++{
++	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(sk);
++	struct inet_request_sock *ireq = inet_rsk(req);
++
++	/* clear tstamp_ok, as needed depending on cookie */
++	if (foc && foc->len > -1)
++		ireq->tstamp_ok = 0;
++
++	if (synack_type == TCP_SYNACK_FASTOPEN)
++		subflow_fastopen_send_synack_set_params(subflow, req);
++
++	return tcp_request_sock_ipv6_ops.send_synack(sk, dst, fl, req, foc, synack_type, syn_skb);
++}
++
+ static struct dst_entry *subflow_v6_route_req(const struct sock *sk,
+ 					      struct sk_buff *skb,
+ 					      struct flowi *fl,
+@@ -1927,6 +1967,7 @@ void __init mptcp_subflow_init(void)
+ 
+ 	subflow_request_sock_ipv4_ops = tcp_request_sock_ipv4_ops;
+ 	subflow_request_sock_ipv4_ops.route_req = subflow_v4_route_req;
++	subflow_request_sock_ipv4_ops.send_synack = subflow_v4_send_synack;
+ 
+ 	subflow_specific = ipv4_specific;
+ 	subflow_specific.conn_request = subflow_v4_conn_request;
+@@ -1940,6 +1981,7 @@ void __init mptcp_subflow_init(void)
+ #if IS_ENABLED(CONFIG_MPTCP_IPV6)
+ 	subflow_request_sock_ipv6_ops = tcp_request_sock_ipv6_ops;
+ 	subflow_request_sock_ipv6_ops.route_req = subflow_v6_route_req;
++	subflow_request_sock_ipv6_ops.send_synack = subflow_v6_send_synack;
+ 
+ 	subflow_v6_specific = ipv6_specific;
+ 	subflow_v6_specific.conn_request = subflow_v6_conn_request;
+-- 
+2.34.1
+

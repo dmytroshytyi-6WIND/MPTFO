@@ -1,0 +1,42 @@
+From d9f1d83812b931a7b470dad379556dda57a46567 Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Thu, 22 Sep 2022 18:49:36 +0200
+Subject: [RFC PATCH mptcp-next v15 1/5] mptcp: introduce MSG_FASTOPEN flag
+
+In the following patches we will analyse the MSG_FASTOPEN flag
+in the mptcp_sendmsg() and invoke the MPTFO.
+
+Signed-of-by: Benjamin Hesmans <benjamin.hesmans@tessares.net>
+Signed-off-by: Dmytro Shytyi <dmytro@shytyi.net>
+---
+ net/mptcp/protocol.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/net/mptcp/protocol.c b/net/mptcp/protocol.c
+index 3196d2a350f9..f4247218fd1b 100644
+--- a/net/mptcp/protocol.c
++++ b/net/mptcp/protocol.c
+@@ -1704,17 +1704,14 @@ static int mptcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
+ 	int ret = 0;
+ 	long timeo;
+ 
+-	/* we don't support FASTOPEN yet */
+-	if (msg->msg_flags & MSG_FASTOPEN)
+-		return -EOPNOTSUPP;
+-
+ 	/* silently ignore everything else */
+-	msg->msg_flags &= MSG_MORE | MSG_DONTWAIT | MSG_NOSIGNAL;
++	msg->msg_flags &= MSG_MORE | MSG_DONTWAIT | MSG_NOSIGNAL | MSG_FASTOPEN;
+ 
+ 	lock_sock(sk);
+ 
+ 	ssock = __mptcp_nmpc_socket(msk);
+-	if (unlikely(ssock && inet_sk(ssock->sk)->defer_connect)) {
++	if (unlikely(ssock && (inet_sk(ssock->sk)->defer_connect ||
++			       msg->msg_flags & MSG_FASTOPEN))) {
+ 		int copied_syn = 0;
+ 
+ 		ret = mptcp_sendmsg_fastopen(sk, ssock->sk, msg, len, &copied_syn);
+-- 
+2.34.1
+

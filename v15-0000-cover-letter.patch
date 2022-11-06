@@ -1,0 +1,74 @@
+From fea48886c1d2bca1140bdb79821be200f42c0b84 Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Sun, 6 Nov 2022 15:17:24 +0000
+Subject: [RFC PATCH mptcp-next v15 0/5] mptcp: Fast Open Mechanism
+
+These patches focus on the Initiator and partially on Listener side.
+The next options in userspace are available:
+a) sendto(..., ..., ..., MSG_FASTOPEN, ..., ...);
+b) setsockopt(..., SOL_TCP, TCP_FASTOPEN, ..., ...);
+
+These patches implement Appendix-B of RFC8684 (MPTFO).
+
+We would like to credit Paulo Abeni, Mat Martineau, Matthieu Baerts and
+Benjamin Hesmans for advices and ideas that improved these patches.
+
+Signed-off-by: Dmytro Shytyi <dmytro@shytyi.net>
+---
+v14 -> v15:
+ - Reduce code size to perform MPTFO selftests. Reuse run_tests_lo().
+ - In v15 proposed change of selftests introduce a reproducible issue.
+
+Observed behavior: 
+# INFO: with MPTFO start
+# ns2 MPTCP -> ns1 (10.0.1.1:10054      ) MPTCP (duration    81ms) [ OK ]
+# ns2 MPTCP -> ns1 (10.0.1.1:10055      ) MPTCP (duration    85ms) [ FAIL ] file received by server does not match (in, out):
+# -rw------- 1 root root 4561948 Nov  6 14:44 /tmp/tmp.9LKqAENkkp
+# Trailing bytes are:
+# MPTCP_TEST_FILE_END_MARKER
+# -rw------- 1 root root 4560528 Nov  6 14:46 /tmp/tmp.sZoeneg8ix
+# Trailing bytes are:
+# MPTCP_TEST_FILE_END_MARKER
+
+Analysis:
+- It seems like at the second round when data supposed to be sent in SYN, output data misses first 1420 bytes, that should be a part of the [Syn] packet. 
+- With local tests (without selftest) the server in userspace receives the data in the SYN during the second round.
+- To confirm that data is sent in SYN, the tcpdump was launched during tests (context of tests with tcpdump: in func sock_connect_mptcp the var was changed: char wbuf[8192] to char wbuf[511] for observavility purposes.
+Output of pcap is presented below.
+root@9a011dab3a59:/mnt/mptcp_net-next/tools/testing/selftests/net/mptcp# tcpdump -r 635ee290-Fz3fsx-ns2-ns1-MPTCP-MPTCP-10.0.1.1-10042-listener.pcap | grep -w "[S]"
+reading from file 635ee290-Fz3fsx-ns2-ns1-MPTCP-MPTCP-10.0.1.1-10042-listener.pcap, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 65535
+20:51:50.770789 sit0  In  IP 10.0.1.2.32944 > 10.0.1.1.10042: Flags [S], seq 980486723, win 64240, options [mss 1460,sackOK,TS val 2478157679 ecr 0,nop,wscale 7,tfo  cookiereq,nop,nop,mptcp capable v1], length 0
+20:51:50.770807 sit0  Out IP 10.0.1.1.10042 > 10.0.1.2.32944: Flags [S.], seq 1788401934, ack 980486724, win 65160, options [mss 1460,nop,nop,sackOK,nop,wscale 7,tfo  cookie de367be85d45564d,nop,nop,mptcp capable v1 {0x2b02096a5416249e}], length 0
+root@9a011dab3a59:/mnt/mptcp_net-next/tools/testing/selftests/net/mptcp# tcpdump -r 635ee290-Fz3fsx-ns2-ns1-MPTCP-MPTCP-10.0.1.1-10043-listener.pcap | grep -w "[S]"
+reading from file 635ee290-Fz3fsx-ns2-ns1-MPTCP-MPTCP-10.0.1.1-10043-listener.pcap, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 65535
+20:51:53.766945 sit0  In  IP 10.0.1.2.50620 > 10.0.1.1.10043: Flags [S], seq 831892394:831892905, win 64240, options [mss 1460,sackOK,TS val 2478160675 ecr 0,nop,wscale 7,tfo  cookie de367be85d45564d,nop,nop,mptcp capable v1], length 511
+20:51:53.766965 sit0  Out IP 10.0.1.1.10043 > 10.0.1.2.50620: Flags [S.], seq 4054084662, ack 831892906, win 65160, options [mss 1460,sackOK,TS val 1954362321 ecr 2478160675,nop,wscale 7,mptcp capable v1 {0x7bf8471b32013c7d}], length 0
+root@9a011dab3a59:/mnt/mptcp_net-next/tools/testing/selftests/net/mptcp# tcpdump -r 635ee290-Fz3fsx-ns2-ns1-MPTCP-MPTCP-10.0.1.1-10044-listener.pcap | grep -w "[S]"
+reading from file 635ee290-Fz3fsx-ns2-ns1-MPTCP-MPTCP-10.0.1.1-10044-listener.pcap, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 65535
+20:51:57.084750 sit0  In  IP 10.0.1.2.43624 > 10.0.1.1.10044: Flags [S], seq 835270974:835271485, win 64240, options [mss 1460,sackOK,TS val 2478163993 ecr 0,nop,wscale 7,tfo  cookie de367be85d45564d,nop,nop,mptcp capable v1], length 511
+20:51:57.084772 sit0  Out IP 10.0.1.1.10044 > 10.0.1.2.43624: Flags [S.], seq 650287874, ack 835271486, win 65160, options [mss 1460,sackOK,TS val 1954365639 ecr 2478163993,nop,wscale 7,mptcp capable v1 {0x7b3cb5cf253aec1b}], length 0
+
+---
+
+Dmytro Shytyi (5):
+  mptcp: introduce MSG_FASTOPEN flag
+  mptcp: implement delayed seq generation for passive fastopen
+  mptcp: add subflow_v(4,6)_send_synack()
+  mptcp: add TCP_FASTOPEN sock option
+  selftests: mptcp: mptfo Initiator/Listener
+
+ net/mptcp/Makefile                            |   2 +-
+ net/mptcp/fastopen.c                          |  66 ++++++++++
+ net/mptcp/options.c                           |   5 +
+ net/mptcp/protocol.c                          |  20 +--
+ net/mptcp/protocol.h                          |  18 +++
+ net/mptcp/sockopt.c                           |   5 +-
+ net/mptcp/subflow.c                           |  42 ++++++
+ .../selftests/net/mptcp/mptcp_connect.c       | 121 +++++++++++++-----
+ .../selftests/net/mptcp/mptcp_connect.sh      |  21 +++
+ 9 files changed, 253 insertions(+), 47 deletions(-)
+ create mode 100644 net/mptcp/fastopen.c
+
+-- 
+2.34.1
+

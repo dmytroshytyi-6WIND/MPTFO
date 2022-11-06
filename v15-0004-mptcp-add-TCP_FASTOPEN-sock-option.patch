@@ -1,0 +1,53 @@
+From c51d9f57507409711a545b332d678790fc7127dc Mon Sep 17 00:00:00 2001
+From: Dmytro Shytyi <dmytro@shytyi.net>
+Date: Tue, 27 Sep 2022 20:26:37 +0000
+Subject: [RFC PATCH mptcp-next v15 4/5] mptcp: add TCP_FASTOPEN sock option
+
+We add the TCP_FASTOPEN socket option in this patch that is going to
+ be set by the listener side.
+
+Signed-off-by: Dmytro Shytyi <dmytro@shytyi.net>
+---
+ net/mptcp/sockopt.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/net/mptcp/sockopt.c b/net/mptcp/sockopt.c
+index f85e9bbfe86f..7f6977295256 100644
+--- a/net/mptcp/sockopt.c
++++ b/net/mptcp/sockopt.c
+@@ -559,6 +559,7 @@ static bool mptcp_supported_sockopt(int level, int optname)
+ 		case TCP_NOTSENT_LOWAT:
+ 		case TCP_TX_DELAY:
+ 		case TCP_INQ:
++		case TCP_FASTOPEN:
+ 		case TCP_FASTOPEN_CONNECT:
+ 		case TCP_FASTOPEN_NO_COOKIE:
+ 			return true;
+@@ -569,7 +570,7 @@ static bool mptcp_supported_sockopt(int level, int optname)
+ 		/* TCP_REPAIR, TCP_REPAIR_QUEUE, TCP_QUEUE_SEQ, TCP_REPAIR_OPTIONS,
+ 		 * TCP_REPAIR_WINDOW are not supported, better avoid this mess
+ 		 */
+-		/* TCP_FASTOPEN_KEY, TCP_FASTOPEN are not supported because
++		/* TCP_FASTOPEN_KEY is not supported because
+ 		 * fastopen for the listener side is currently unsupported
+ 		 */
+ 	}
+@@ -801,6 +802,7 @@ static int mptcp_setsockopt_sol_tcp(struct mptcp_sock *msk, int optname,
+ 		/* See tcp.c: TCP_DEFER_ACCEPT does not fail */
+ 		mptcp_setsockopt_first_sf_only(msk, SOL_TCP, optname, optval, optlen);
+ 		return 0;
++	case TCP_FASTOPEN:
+ 	case TCP_FASTOPEN_CONNECT:
+ 	case TCP_FASTOPEN_NO_COOKIE:
+ 		return mptcp_setsockopt_first_sf_only(msk, SOL_TCP, optname,
+@@ -1166,6 +1168,7 @@ static int mptcp_getsockopt_sol_tcp(struct mptcp_sock *msk, int optname,
+ 	case TCP_INFO:
+ 	case TCP_CC_INFO:
+ 	case TCP_DEFER_ACCEPT:
++	case TCP_FASTOPEN:
+ 	case TCP_FASTOPEN_CONNECT:
+ 	case TCP_FASTOPEN_NO_COOKIE:
+ 		return mptcp_getsockopt_first_sf_only(msk, SOL_TCP, optname,
+-- 
+2.34.1
+
