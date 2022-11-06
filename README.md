@@ -25,3 +25,7 @@ Patch	                                                                          
 [RFC,mptcp-next,v15,2/5] mptcp: implement delayed seq generation for passive fastopen	mptcp: Fast Open Mechanism	- - -	13-	2022-11-06	Dmytro Shytyi		New
 
 [RFC,mptcp-next,v15,1/5] mptcp: introduce MSG_FASTOPEN flag	                            mptcp: Fast Open Mechanism	- - -	13-	2022-11-06	Dmytro Shytyi		New
+
+Build validation:
+
+https://github.com/multipath-tcp/mptcp_net-next/actions/runs/3404953313/jobs/5662562675
